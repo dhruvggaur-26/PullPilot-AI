@@ -17,9 +17,7 @@ const fetchPrFiles = async (prUrl) => {
   headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 }
 
-  // if (process.env.GITHUB_TOKEN) {
-  //   headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  // }
+ 
 
   const response = await axios.get(githubApiUrl, { headers });
 
