@@ -19,105 +19,22 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
+  const [postingComment, setPostingComment] = useState(false);
 
-const fetchHistory = async () => {
-  try {
-    const response = await axios.get(`${API_URL}/api/pr/history`);
-    setHistory(response.data.reviews || []);
-  } catch (error) {
-    console.log("History fetch error:", error);
-  }
-};
+  const review = result?.review;
 
-const downloadReport = () => {
-  if (!result || !review) {
-    toast.error("No review available to download");
-    return;
-  }
-
-  const doc = new jsPDF();
-
-  let y = 20;
-
-  doc.setFontSize(20);
-  doc.text("PullPilot AI - Pull Request Review Report", 14, y);
-
-  y += 12;
-
-  doc.setFontSize(11);
-  doc.text(`Repository: ${result.repo}`, 14, y);
-  y += 7;
-  doc.text(`Pull Request: #${result.pullNumber}`, 14, y);
-  y += 7;
-  doc.text(`Changed Files: ${result.totalFiles}`, 14, y);
-  y += 7;
-  doc.text(`Quality Score: ${review.overallScore}/100`, 14, y);
-  y += 7;
-  doc.text(`Risk Level: ${review.riskLevel}`, 14, y);
-
-  y += 12;
-
-  doc.setFontSize(15);
-  doc.text("Overall Summary", 14, y);
-  y += 8;
-
-  doc.setFontSize(10);
-  const summaryLines = doc.splitTextToSize(review.summary || "No summary available", 180);
-  doc.text(summaryLines, 14, y);
-  y += summaryLines.length * 6 + 8;
-
-  const addSection = (title, items) => {
-    if (y > 260) {
-      doc.addPage();
-      y = 20;
+  const fetchHistory = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/pr/history`);
+      setHistory(response.data.reviews || []);
+    } catch (error) {
+      console.log("History fetch error:", error);
     }
-
-    doc.setFontSize(15);
-    doc.text(title, 14, y);
-    y += 8;
-
-    doc.setFontSize(10);
-
-    if (!items || items.length === 0) {
-      doc.text("No data available.", 14, y);
-      y += 8;
-      return;
-    }
-
-    items.forEach((item, index) => {
-      if (y > 260) {
-        doc.addPage();
-        y = 20;
-      }
-
-      const text =
-        typeof item === "string"
-          ? `${index + 1}. ${item}`
-          : `${index + 1}. ${item.title || item.filename || "Item"} - ${
-              item.description || item.summary || item.suggestion || ""
-            }`;
-
-      const lines = doc.splitTextToSize(text, 180);
-      doc.text(lines, 14, y);
-      y += lines.length * 6 + 4;
-    });
-
-    y += 5;
   };
 
-  addSection("Issues Found", review.issues);
-  addSection("Recommendations", review.recommendations);
-  addSection("Tests To Add", review.testsToAdd);
-  addSection("Positive Points", review.positivePoints);
-
-  doc.save(`PullPilot-PR-${result.pullNumber}-Report.pdf`);
-
-  toast.success("Report downloaded successfully");
-};
-
-useEffect(() => {
-  fetchHistory();
-}, []);
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   const analyzePR = async () => {
     if (!prUrl.trim()) {
@@ -138,13 +55,138 @@ useEffect(() => {
       fetchHistory();
     } catch (error) {
       console.log(error);
-      toast.error("Failed to analyze PR. Check backend and AI service.");
+
+      const message =
+        error.response?.data?.error?.detail ||
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        "Failed to analyze PR. Check backend and AI service.";
+
+      toast.error(typeof message === "string" ? message : "Backend error occurred");
     } finally {
       setLoading(false);
     }
   };
 
-  const review = result?.review;
+  const postGithubComment = async () => {
+    if (!result || !review || !prUrl.trim()) {
+      toast.error("Analyze a PR first before posting comment");
+      return;
+    }
+
+    try {
+      setPostingComment(true);
+
+      const response = await axios.post(`${API_URL}/api/pr/comment`, {
+        prUrl,
+        review,
+      });
+
+      toast.success("Review posted on GitHub PR");
+
+      if (response.data.commentUrl) {
+        window.open(response.data.commentUrl, "_blank");
+      }
+    } catch (error) {
+      console.log(error);
+
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error?.message ||
+        "Failed to post comment. Check GitHub token and repo permissions.";
+
+      toast.error(message);
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const downloadReport = () => {
+    if (!result || !review) {
+      toast.error("No review available to download");
+      return;
+    }
+
+    const doc = new jsPDF();
+    let y = 20;
+
+    doc.setFontSize(20);
+    doc.text("PullPilot AI - Pull Request Review Report", 14, y);
+
+    y += 12;
+
+    doc.setFontSize(11);
+    doc.text(`Repository: ${result.repo}`, 14, y);
+    y += 7;
+    doc.text(`Pull Request: #${result.pullNumber}`, 14, y);
+    y += 7;
+    doc.text(`Changed Files: ${result.totalFiles}`, 14, y);
+    y += 7;
+    doc.text(`Quality Score: ${review.overallScore}/100`, 14, y);
+    y += 7;
+    doc.text(`Risk Level: ${review.riskLevel}`, 14, y);
+
+    y += 12;
+
+    doc.setFontSize(15);
+    doc.text("Overall Summary", 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    const summaryLines = doc.splitTextToSize(
+      review.summary || "No summary available",
+      180
+    );
+    doc.text(summaryLines, 14, y);
+    y += summaryLines.length * 6 + 8;
+
+    const addSection = (title, items) => {
+      if (y > 260) {
+        doc.addPage();
+        y = 20;
+      }
+
+      doc.setFontSize(15);
+      doc.text(title, 14, y);
+      y += 8;
+
+      doc.setFontSize(10);
+
+      if (!items || items.length === 0) {
+        doc.text("No data available.", 14, y);
+        y += 8;
+        return;
+      }
+
+      items.forEach((item, index) => {
+        if (y > 260) {
+          doc.addPage();
+          y = 20;
+        }
+
+        const text =
+          typeof item === "string"
+            ? `${index + 1}. ${item}`
+            : `${index + 1}. ${item.title || item.filename || "Item"} - ${
+                item.description || item.summary || item.suggestion || ""
+              }`;
+
+        const lines = doc.splitTextToSize(text, 180);
+        doc.text(lines, 14, y);
+        y += lines.length * 6 + 4;
+      });
+
+      y += 5;
+    };
+
+    addSection("Issues Found", review.issues);
+    addSection("Recommendations", review.recommendations);
+    addSection("Tests To Add", review.testsToAdd);
+    addSection("Positive Points", review.positivePoints);
+
+    doc.save(`PullPilot-PR-${result.pullNumber}-Report.pdf`);
+    toast.success("Report downloaded successfully");
+  };
 
   const getRiskBadge = (risk) => {
     if (risk === "High") {
@@ -396,12 +438,20 @@ useEffect(() => {
             </aside>
 
             <div className="space-y-6">
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-3">
   <button
     onClick={downloadReport}
     className="rounded-xl bg-gray-900 text-white px-5 py-3 font-semibold hover:bg-gray-800"
   >
     Download PDF Report
+  </button>
+
+  <button
+    onClick={postGithubComment}
+    disabled={postingComment}
+    className="rounded-xl border border-gray-300 bg-white text-gray-900 px-5 py-3 font-semibold hover:bg-gray-50 disabled:opacity-60"
+  >
+    {postingComment ? "Posting..." : "Post to GitHub PR"}
   </button>
 </div>
               <Panel title="Overall Summary">
