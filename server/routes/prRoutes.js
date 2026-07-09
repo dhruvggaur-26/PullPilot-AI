@@ -13,6 +13,9 @@ const fetchPrFiles = async (prUrl) => {
   const headers = {
     Accept: "application/vnd.github+json",
   };
+  if (process.env.GITHUB_TOKEN) {
+  headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+}
 
   // if (process.env.GITHUB_TOKEN) {
   //   headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
